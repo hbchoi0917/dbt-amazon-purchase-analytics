@@ -36,3 +36,115 @@ models:
         description: Percentage of cohort lost by this month offset (0–100).
         tests:
           - not_null
+
+  - name: mart_revenue_forecast_backtest
+    description: >
+      Out-of-sample backtest. From every historical cutoff, each method forecasts
+      1..forecast_horizon_months ahead and is scored against the actual complete month.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['method', 'origin_month', 'horizon']
+    columns:
+      - name: method
+        description: Forecast method (see int_revenue_forecast_fits).
+        tests:
+          - not_null
+      - name: origin_month
+        description: Last month of training data available to the forecast.
+        tests:
+          - not_null
+      - name: target_month
+        description: Month being forecast (origin_month + horizon).
+        tests:
+          - not_null
+      - name: horizon
+        description: Months ahead of the origin (1 = next month).
+        tests:
+          - not_null
+      - name: train_months
+        description: Size of the training window.
+      - name: forecast_revenue
+        description: Forecast revenue for target_month.
+        tests:
+          - not_null
+      - name: actual_revenue
+        description: Actual revenue for target_month.
+        tests:
+          - not_null
+      - name: forecast_error
+        description: forecast - actual (positive = over-forecast).
+      - name: absolute_error
+        description: abs(forecast - actual).
+      - name: absolute_pct_error
+        description: absolute_error / actual * 100.
+
+  - name: mart_revenue_forecast_accuracy
+    description: >
+      Backtest accuracy by method and horizon (MAE, RMSE, MAPE, WAPE, bias).
+      The method with the lowest overall WAPE across all horizons is selected.
+      WAPE is the primary metric because it weights errors by revenue and is
+      stable when a month is small, unlike MAPE.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['method', 'horizon']
+    columns:
+      - name: method
+        tests:
+          - not_null
+      - name: horizon
+        tests:
+          - not_null
+      - name: n_forecasts
+        description: Number of backtest forecasts scored.
+      - name: mae
+        description: Mean absolute error (revenue units).
+      - name: rmse
+        description: Root mean squared error; also sizes the forecast interval.
+      - name: mape_pct
+        description: Mean absolute percentage error.
+      - name: wape_pct
+        description: Weighted absolute percentage error = sum(|error|) / sum(actual) * 100.
+      - name: bias_pct
+        description: sum(error) / sum(actual) * 100; positive = systematic over-forecasting.
+      - name: overall_wape_pct
+        description: WAPE across all horizons, used to rank methods.
+      - name: method_rank
+        description: 1 = most accurate method.
+      - name: is_selected_method
+        description: True for the method used as the headline forecast.
+        tests:
+          - not_null
+
+  - name: mart_revenue_forecast
+    description: >
+      Forward monthly revenue forecast for the next forecast_horizon_months,
+      trained on all complete months. Every method is included for comparison;
+      filter on is_selected_method for the headline number. The 80% interval is
+      forecast ± 1.2816 × backtest RMSE at the same horizon (approximate).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['method', 'forecast_month']
+    columns:
+      - name: forecast_month
+        tests:
+          - not_null
+      - name: horizon
+        tests:
+          - not_null
+      - name: method
+        tests:
+          - not_null
+      - name: trained_through_month
+        description: Last complete month used for training.
+      - name: train_months
+        description: Number of months used for training.
+      - name: forecast_revenue
+        tests:
+          - not_null
+      - name: lower_80_revenue
+        description: Lower bound of the approximate 80% interval (floored at 0).
+      - name: upper_80_revenue
+        description: Upper bound of the approximate 80% interval.
+      - name: is_selected_method
+        tests:
+          - not_null
