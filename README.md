@@ -182,8 +182,8 @@ graph LR
 ### Getting started
 
 ```bash
-git clone https://github.com/hbchoi0917/dbt-retention-analytics.git
-cd dbt-retention-analytics
+git clone https://github.com/hbchoi0917/dbt-amazon-purchase-analytics.git
+cd dbt-amazon-purchase-analytics
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install dbt-duckdb
 dbt deps     # dbt_utils
@@ -367,8 +367,8 @@ dbt build    # 12 models + 95 tests, under a minute
 ### 시작하기
 
 ```bash
-git clone https://github.com/hbchoi0917/dbt-retention-analytics.git
-cd dbt-retention-analytics
+git clone https://github.com/hbchoi0917/dbt-amazon-purchase-analytics.git
+cd dbt-amazon-purchase-analytics
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install dbt-duckdb
 dbt deps     # dbt_utils
