@@ -1,61 +1,109 @@
 version: 2
 
 models:
-  - name: stg_customers
+  - name: stg_ecommerce__purchases
     description: >
-      One row per unique customer, deduplicated from raw_transactions using the
-      earliest transaction record per customer_id.
+      One row per purchased item, typed and renamed. All rows are kept (including gift
+      cards and exact duplicate rows); filtering for analysis happens in
+      int_purchases__in_scope so this layer stays a faithful copy of the source.
+    tests:
+      # Exact duplicate rows exist and cannot be told apart from genuine repeat orders
+      # (no order id in the export). Monitored as a warning, not silently removed.
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns:
+            - customer_id
+            - order_date
+            - unit_price
+            - quantity
+            - shipping_state
+            - product_code
+            - product_title
+            - product_category
+          config:
+            severity: warn
     columns:
-      - name: customer_id
-        description: Unique customer identifier.
-        tests:
-          - unique
-          - not_null
-      - name: customer_gender
-        description: Customer gender as recorded at first transaction.
-        tests:
-          - not_null
-          - accepted_values:
-              values: ['Male', 'Female']
-      - name: customer_age
-        description: Customer age at first transaction.
-        tests:
-          - not_null
-
-  - name: stg_transactions
-    description: >
-      Cleaned and renamed transaction records from the raw seed. One row per
-      transaction. Source columns are preserved; no business logic applied.
-    columns:
-      - name: transaction_id
-        description: Unique transaction identifier.
+      - name: purchase_line_id
+        description: Surrogate key (all source columns + duplicate_seq).
         tests:
           - unique
           - not_null
       - name: customer_id
-        description: Foreign key to stg_customers.
+        description: Participant id ("Survey ResponseID").
         tests:
           - not_null
           - relationships:
-              to: ref('stg_customers')
+              to: ref('stg_ecommerce__customers')
               field: customer_id
-      - name: transaction_date
-        description: Date the transaction occurred.
+      - name: order_date
         tests:
           - not_null
-      - name: product_category
-        description: Product category (Beauty, Clothing, Electronics, etc.).
+      - name: unit_price
+        description: Price per unit in USD as exported.
         tests:
           - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
       - name: quantity
-        description: Number of units purchased.
         tests:
           - not_null
-      - name: price_per_unit
-        description: Unit price at time of purchase.
+          - dbt_utils.accepted_range:
+              min_value: 1
+      - name: line_amount
+        description: unit_price * quantity.
         tests:
           - not_null
-      - name: total_amount
-        description: Total transaction value (quantity * price_per_unit).
+      - name: shipping_state
+        description: Shipping address state (null for ~4.7% of rows, e.g. digital items).
+      - name: product_code
+        description: ASIN or ISBN.
+      - name: product_title
+        description: Product title as exported.
+      - name: product_category
+        description: Amazon product category; 'UNKNOWN' when the export has none (~4.8% of rows).
         tests:
           - not_null
+      - name: is_gift_card
+        description: >
+          True for gift card purchases. Excluded from spend metrics: buying a gift card
+          is a prepayment, and the later purchases it funds are already in the data.
+        tests:
+          - not_null
+      - name: duplicate_seq
+        description: 1 for the first copy of a row; 2+ for exact duplicates of it.
+
+  - name: stg_ecommerce__customers
+    description: >
+      One row per participant with demographic and Amazon-usage answers. Sensitive
+      questions (health, substance use, race, sexual orientation) are intentionally excluded.
+    columns:
+      - name: customer_id
+        tests:
+          - unique
+          - not_null
+      - name: age_group
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['18 - 24 years', '25 - 34 years', '35 - 44 years', '45 - 54 years', '55 - 64 years', '65 and older']
+      - name: age_group_order
+        description: Sort key for age_group.
+        tests:
+          - not_null
+      - name: income_band
+        description: Household income before taxes, past 12 months.
+        tests:
+          - not_null
+      - name: income_band_order
+        description: Sort key for income_band.
+        tests:
+          - not_null
+      - name: education_level
+      - name: gender
+      - name: home_state
+      - name: household_size
+        description: People in the household ('1 (just me!)', '2', '3', '4+').
+      - name: account_users
+        description: >
+          People who share this Amazon account. A "customer" here is an account,
+          which can be a household rather than one person.
+      - name: self_reported_order_frequency

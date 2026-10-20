@@ -1,0 +1,36 @@
+version: 2
+
+sources:
+  - name: open_ecommerce
+    description: >
+      Open e-commerce 1.0 (Berke et al., 2023, Harvard Dataverse, doi:10.7910/DVN/YGLYDY, CC0 1.0).
+      Amazon.com purchase histories that 5,027 U.S. users exported and shared with consent,
+      linked to a short demographic survey. Files live in data/raw (see data/README.md).
+    tables:
+      - name: amazon_purchases
+        description: >
+          One row per purchased item as exported from Amazon (no order or line id).
+          Lossless Parquet copy of amazon-purchases.csv; every column is text.
+        meta:
+          external_location: "read_parquet('data/raw/amazon_purchases.parquet')"
+        columns:
+          - name: '"Survey ResponseID"'
+            description: Random participant id; links to survey.
+            quote: false
+            tests:
+              - not_null
+          - name: '"Order Date"'
+            quote: false
+            tests:
+              - not_null
+
+      - name: survey
+        description: One row per participant (N = 5,027). Column meanings are in data/raw/fields.csv.
+        meta:
+          external_location: "read_csv('data/raw/survey.csv', header = true, all_varchar = true)"
+        columns:
+          - name: '"Survey ResponseID"'
+            quote: false
+            tests:
+              - unique
+              - not_null

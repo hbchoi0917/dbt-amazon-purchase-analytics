@@ -1,0 +1,9 @@
+# Local DuckDB profile so the project runs straight after cloning.
+# dbt picks up a profiles.yml in the project directory automatically.
+dbt_retention_analytics:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: dev.duckdb
+      threads: 4

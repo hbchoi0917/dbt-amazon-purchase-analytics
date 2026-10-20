@@ -23,10 +23,22 @@ clean-targets:         # directories to be removed by `dbt clean`
   - "dbt_packages"
 
 vars:
-  forecast_horizon_months: 3         # how many months ahead to forecast (and backtest)
-  forecast_min_train_months: 3       # smallest training window used in the backtest
+  # Analysis window. Participants exported their data between Nov 2022 and Mar 2023,
+  # so months from Nov 2022 onward are missing purchases for part of the panel.
+  analysis_start_date: '2018-01-01'
+  analysis_end_date: '2022-10-31'
+
+  # Forecasting
+  forecast_horizon_months: 3         # how many months ahead to forecast (and backtest); must be <= 12
+  forecast_min_train_months: 24      # seasonal methods need two full years of history
   forecast_moving_average_months: 3  # window for the moving_average method
-  revenue_spine_max_months: 240      # upper bound for the monthly date spine
+
+  # Category repurchase
+  category_lookback_months: 12       # no purchase in the category for this long = "new to category"
+  category_min_new_buyers: 100       # hide categories too small to measure
+
+  # Privacy: never publish a segment smaller than this
+  segment_min_customers: 50
 
 
 models:
