@@ -1,40 +1,103 @@
 version: 2
 
 models:
-  - name: int_customer_cohorts
+  - name: int_purchases__in_scope
     description: >
-      Each transaction enriched with the customer's cohort month (month of first
-      purchase) and the month_offset (months elapsed since cohort entry).
-      Used as the single source of truth for all cohort-based retention models.
+      Analysis-grade purchase lines: inside the analysis window (analysis_start_date to
+      analysis_end_date) and excluding gift cards. Every spend metric starts here.
     columns:
-      - name: transaction_id
-        description: Unique transaction identifier.
+      - name: purchase_line_id
         tests:
           - unique
           - not_null
+      - name: order_date
+        tests:
+          - not_null
+      - name: is_gift_card
+        tests:
+          - accepted_values:
+              values: [false]
+
+  - name: int_customer_months
+    description: >
+      One row per customer per month of the analysis window, including inactive months
+      (zero spend). The complete grid makes activity rates and retention correct.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['customer_id', 'activity_month']
+    columns:
       - name: customer_id
-        description: Foreign key to stg_customers.
         tests:
           - not_null
-      - name: transaction_date
-        description: Date the transaction occurred.
+      - name: activity_month
         tests:
           - not_null
-      - name: product_category
-        description: Product category of the transaction.
+      - name: spend
+        description: In-scope spend in the month (0 when inactive).
         tests:
           - not_null
-      - name: total_amount
-        description: Transaction revenue.
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: purchase_lines
         tests:
           - not_null
-      - name: cohort_month
-        description: Month of the customer's first-ever purchase (date_trunc to month).
+      - name: purchase_days
+        description: Distinct days with a purchase; the export has no order id, so this stands in for orders.
         tests:
           - not_null
-      - name: month_offset
+      - name: is_active
+        description: At least one in-scope purchase in the month.
+        tests:
+          - not_null
+
+  - name: int_monthly_revenue
+    description: Monthly in-scope spend of the whole panel. This is the series that is forecast.
+    columns:
+      - name: revenue_month
+        tests:
+          - unique
+          - not_null
+      - name: revenue
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+      - name: active_customers
+      - name: purchase_lines
+
+  - name: int_revenue_forecasts
+    description: >
+      Every method's forecast from every training cutoff (origin_month), 1..forecast_horizon_months
+      ahead, on an expanding window of months up to and including the origin.
+      Earlier origins feed the backtest; the latest origin is the live forecast.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['origin_month', 'method', 'horizon']
+    columns:
+      - name: origin_month
+        description: Last month the forecast was allowed to see.
+        tests:
+          - not_null
+      - name: target_month
+        description: Month being forecast (origin_month + horizon).
+        tests:
+          - not_null
+      - name: horizon
+        tests:
+          - not_null
+      - name: method
         description: >
-          Integer number of months between cohort_month and the transaction month.
-          0 = acquisition month, 1 = first full month after acquisition, etc.
+          naive (last month), historical_mean (mean of all history), moving_average (mean of the
+          last N months), linear_trend (OLS on month index), seasonal_naive (same month last year),
+          seasonal_naive_yoy (same month last year × trailing 12-month year-over-year growth).
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['naive', 'historical_mean', 'moving_average', 'linear_trend', 'seasonal_naive', 'seasonal_naive_yoy']
+      - name: train_months
+        description: Number of months in the training window.
+        tests:
+          - not_null
+      - name: forecast_revenue
         tests:
           - not_null

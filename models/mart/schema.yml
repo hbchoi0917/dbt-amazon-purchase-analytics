@@ -1,38 +1,201 @@
 version: 2
 
 models:
-  - name: mart_customer_retention
+  - name: mart_monthly_customer_activity
     description: >
-      Monthly cohort retention table. Each row represents one cohort-month
-      combination, showing how many customers from the original cohort were
-      still active (made a purchase) in that month offset.
-
-      Retention rate = active_customers / cohort_size * 100.
-      Churn rate     = (1 - active_customers / cohort_size) * 100.
-
-      month_offset = 0 is always 100% retention (the acquisition month itself).
+      Monthly purchase activity of the fixed panel (5,027 accounts). Retention is
+      month-over-month: of last month's buyers, the share who bought again this month.
+      Levels skew high (the panel only includes people still active when surveyed);
+      trends and seasonality are the reliable signal.
     columns:
-      - name: cohort_month
-        description: The month a cohort of customers made their first purchase.
+      - name: activity_month
         tests:
+          - unique
           - not_null
-      - name: month_offset
-        description: Months since cohort acquisition (0 = acquisition month).
-        tests:
-          - not_null
-      - name: cohort_size
-        description: Total number of distinct customers in this cohort.
+      - name: panel_customers
         tests:
           - not_null
       - name: active_customers
-        description: Distinct customers from this cohort who transacted in this month offset.
+        description: Customers with at least one in-scope purchase in the month.
         tests:
           - not_null
-      - name: retention_rate_pct
-        description: Percentage of cohort still active at this month offset (0–100).
+      - name: active_rate_pct
         tests:
           - not_null
-      - name: churn_rate_pct
-        description: Percentage of cohort lost by this month offset (0–100).
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: prior_month_active_customers
+      - name: retained_customers
+        description: Active last month and again this month.
+      - name: mom_retention_pct
+        description: retained_customers / prior_month_active_customers × 100 (null in the first month).
+        tests:
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: total_spend
+        tests:
+          - not_null
+      - name: spend_per_active_customer
+      - name: purchase_days_per_active_customer
+        description: Purchase frequency proxy (distinct purchase days per active customer).
+
+  - name: mart_category_repurchase
+    description: >
+      For each product category: of customers new to the category (no purchase in it for
+      at least category_lookback_months of observed history), the share who bought in the
+      category again within 30 / 90 / 180 days. Only buyers with a full 180-day follow-up
+      are counted, and categories with fewer than category_min_new_buyers are hidden.
+    columns:
+      - name: product_category
+        tests:
+          - unique
+          - not_null
+      - name: new_buyers
+        tests:
+          - not_null
+      - name: repurchase_30d_pct
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: repurchase_90d_pct
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: repurchase_180d_pct
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: 0
+              max_value: 100
+      - name: median_days_to_repurchase_180d
+        description: Median days to the next purchase among buyers who repurchased within 180 days.
+
+  - name: mart_customer_segments
+    description: >
+      Average monthly spend and share of active months by self-reported segment
+      (age group, income band, household size, account users). Segments with fewer than
+      segment_min_customers customers are suppressed.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['segment_type', 'segment_value']
+    columns:
+      - name: segment_type
+        tests:
+          - not_null
+          - accepted_values:
+              values: ['age_group', 'income_band', 'household_size', 'account_users']
+      - name: segment_value
+        tests:
+          - not_null
+      - name: segment_order
+        description: Sort key for ordinal segments (null where the text already sorts correctly).
+      - name: customers
+        tests:
+          - not_null
+          - dbt_utils.accepted_range:
+              min_value: "{{ var('segment_min_customers') }}"
+      - name: avg_monthly_spend
+        description: Mean over customers of (in-scope spend / months in the window).
+      - name: median_monthly_spend
+      - name: avg_active_month_pct
+        description: Mean share of months in which the customer bought anything.
+
+  - name: mart_revenue_forecast_backtest
+    description: >
+      Out-of-sample backtest. From every historical cutoff with at least
+      forecast_min_train_months of history, each method forecasts 1..forecast_horizon_months
+      ahead and is scored against the actual month.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['method', 'origin_month', 'horizon']
+    columns:
+      - name: method
+        tests:
+          - not_null
+      - name: origin_month
+        description: Last month of training data available to the forecast.
+        tests:
+          - not_null
+      - name: target_month
+        tests:
+          - not_null
+      - name: horizon
+        tests:
+          - not_null
+      - name: train_months
+      - name: forecast_revenue
+        tests:
+          - not_null
+      - name: actual_revenue
+        tests:
+          - not_null
+      - name: forecast_error
+        description: forecast - actual (positive = over-forecast).
+      - name: absolute_error
+      - name: absolute_pct_error
+
+  - name: mart_revenue_forecast_accuracy
+    description: >
+      Backtest accuracy by method and horizon (MAE, RMSE, MAPE, WAPE, bias). The method
+      with the lowest WAPE across all horizons is selected. The rule was fixed before
+      looking at results; WAPE weights errors by revenue, unlike MAPE.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['method', 'horizon']
+    columns:
+      - name: method
+        tests:
+          - not_null
+      - name: horizon
+        tests:
+          - not_null
+      - name: n_forecasts
+      - name: mae
+      - name: rmse
+        description: Also sizes the forecast interval.
+      - name: mape_pct
+      - name: wape_pct
+        description: sum(|error|) / sum(actual) × 100.
+      - name: bias_pct
+        description: sum(error) / sum(actual) × 100; positive = systematic over-forecasting.
+      - name: overall_wape_pct
+        description: WAPE across all horizons, used to rank methods.
+      - name: method_rank
+      - name: is_selected_method
+        tests:
+          - not_null
+
+  - name: mart_revenue_forecast
+    description: >
+      Forecast for the forecast_horizon_months after the analysis window, trained on every
+      month in it. All methods are included; filter on is_selected_method for the headline.
+      The 80% interval is forecast ± 1.2816 × backtest RMSE at the same horizon (approximate).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: ['method', 'forecast_month']
+    columns:
+      - name: forecast_month
+        tests:
+          - not_null
+      - name: horizon
+        tests:
+          - not_null
+      - name: method
+        tests:
+          - not_null
+      - name: trained_through_month
+      - name: train_months
+      - name: forecast_revenue
+        tests:
+          - not_null
+      - name: lower_80_revenue
+      - name: upper_80_revenue
+      - name: is_selected_method
         tests:
           - not_null
