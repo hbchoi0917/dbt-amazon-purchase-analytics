@@ -2,6 +2,8 @@
 
 **Analytics Engineering Portfolio Project** · **애널리틱스 엔지니어링 포트폴리오 프로젝트**
 
+![Monthly panel spend 2018–2022 with 3-month forecasts: spend rises through the 2020 COVID shift with December holiday peaks; the selected moving-average forecast is flat while seasonal naive follows the holiday pattern](docs/images/project_overview.png)
+
 > 🌐 **Language / 언어** — Click a heading below to expand or collapse it. / 아래 제목을 클릭하면 펼치거나 접을 수 있습니다.
 
 <details open>
@@ -192,6 +194,8 @@ dbt build    # 12 models + 95 tests, under a minute
 
 `profiles.yml` is included and builds a local `dev.duckdb`.
 
+To regenerate the chart at the top from the built models: `pip install matplotlib && python scripts/render_overview_chart.py`.
+
 ---
 
 ### Limitations
@@ -376,6 +380,8 @@ dbt build    # 모델 12개 + 테스트 95개, 1분 이내
 ```
 
 `profiles.yml`이 포함되어 있어 로컬 `dev.duckdb`가 바로 만들어집니다.
+
+맨 위 차트를 빌드된 모델로 다시 만들려면 `pip install matplotlib && python scripts/render_overview_chart.py`를 실행하세요.
 
 ---
 
